@@ -2,6 +2,7 @@ import mteb
 from datasets import Dataset, DatasetDict
 from typing import Sequence
 import ollama
+import json
 
 
 def embedding(x) -> Sequence[Sequence[float]]:
@@ -10,14 +11,18 @@ def embedding(x) -> Sequence[Sequence[float]]:
 
 
 task = mteb.get_task(task_name="Banking77Classification")
-
 task.load_data()
-DATA = task.dataset.data["train"]["text"]
-DATA = [str(text) for text in DATA]
 
-# print(DATA.data['train']['text'])
-# print(DATA.data['train']['label'])
-# print(DATA.data['train']['label_text'])
+DATA = task.dataset["train"]  # This is a HuggingFace Dataset object
 
-# for text in DATA.data['train']['text']:
-#     text = str(text)
+output_file = "banking77out.jsonl"
+
+with open(output_file, "w", encoding="utf-8") as f:
+    for example in DATA:
+        text = str(example["text"])
+        label = example["label"]  # Optional, include if needed
+        embed = embedding(text)[0]  # get the embedding vector (single item)
+        record = {"text": text, "label": label, "embedding": embed}
+        f.write(json.dumps(record) + "\n")
+
+print(f"Saved embeddings to {output_file}")
