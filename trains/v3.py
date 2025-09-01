@@ -1,20 +1,30 @@
 import mteb
-import ollama
+from datasets import Dataset, DatasetDict, load_dataset
 from typing import Sequence
+import ollama
+import json
 
 
 def embedding(x) -> Sequence[Sequence[float]]:
-    return ollama.embed(model="nomic-embed-text", input=x).embeddings
+    z = ollama.embed(model="nomic-embed-text", input=x).embeddings
+    return z
 
 
-task_names = [
-    "Banking77Classification",
-    "MSMARCO",
-    "STSBenchmark",
-]
+task = mteb.get_task(task_name="NarrativeQARetrieval")
+task.load_data()
+print(task)
 
+DATA = task.dataset["test"]
 
-tasks = mteb.get_tasks(tasks=task_names)
-print(tasks.to_dataframe())
-benchmark = mteb.MTEB(tasks=tasks)
-print(benchmark)
+print(DATA)
+# output_file = "NarrativeQARetrieval.jsonl"
+#
+# with open(output_file, "w", encoding="utf-8") as f:
+#     for example in DATA:
+#         text = str(example["text"])
+#         label = example["label"]  # Optional, include if needed
+#         embed = embedding(text)[0]  # get the embedding vector (single item)
+#         record = {"text": text, "label": label, "embedding": embed}
+#         f.write(json.dumps(record) + "\n")
+#
+# print(f"Saved embeddings to {output_file}")
