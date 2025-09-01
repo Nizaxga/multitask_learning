@@ -209,3 +209,5 @@ __marimo__/
 # idk
 *.cpp
 *.out
+*.npy
+*.jsonl
