@@ -211,3 +211,5 @@ __marimo__/
 *.out
 *.npy
 *.jsonl
+Hopfield_Net
+testing_model

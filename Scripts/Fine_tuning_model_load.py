@@ -5,7 +5,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.cluster import KMeans
 
 # GLOBAL VARIABLE
-model_name = "nomic-embed-text"
+model_name = "testing_model"
 dataset_name_1 = "Banking77Classification"
 dataset_name_2 = "STSBenchmark"
 
