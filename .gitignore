@@ -213,3 +213,4 @@ __marimo__/
 *.jsonl
 Hopfield_Net
 testing_model
+config.py

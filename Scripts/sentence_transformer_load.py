@@ -45,7 +45,7 @@ plt.title("Ground Truth Labels")
 plt.scatter(proj[:, 0], proj[:, 1], c=labels_true, cmap='coolwarm', alpha=0.5)
 
 plt.subplot(1, 2, 2)
-plt.title("K-Means Predicted Clusters")
+plt.title("Expected Outcome")
 plt.scatter(proj[:, 0], proj[:, 1], c=kmeans.labels_, cmap='coolwarm', alpha=0.5)
 
 plt.tight_layout()
