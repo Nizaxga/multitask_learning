@@ -98,19 +98,34 @@ class VAE(nn.Module):
         return self.decoder(Z), mu, log_var
 
 
-class VAE_supervised(VAE):
-    def __init__(self, latent_dim=77, input_dim=384, hidden_dim=192):
-        super().__init__(latent_dim, input_dim, hidden_dim)
+# class VAE_supervised(VAE):
+#     def __init__(self, latent_dim=77, input_dim=384, hidden_dim=192):
+#         super().__init__(latent_dim, input_dim, hidden_dim)
 
-        # Decoder isn't used.
-        self.classifier = nn.Linear(latent_dim, 77)
+#         # Decoder isn't used.
+#         self.classifier = nn.Linear(latent_dim, 77)
 
-    def forward(self, X):
-        mu, log_var = self.encode(X)
-        Z = self.reparameterize(mu, log_var)
-        recon = self.decoder(Z)
-        logits = self.classifier(mu)
-        return logits, recon, mu, log_var
+#     def forward(self, X):
+#         mu, log_var = self.encode(X)
+#         Z = self.reparameterize(mu, log_var)
+#         recon = self.decoder(Z)
+#         logits = self.classifier(mu)
+#         return logits, recon, mu, log_var
+
+# class LoRALinear(nn.Module):
+#     def __init__(self, in_features, out_features, r, alpha):
+#         super().__init__()
+#         self.W = nn.Linear(in_features, out_features, bias=False)
+#         self.W.weight.requires_grad = False  # Freeze
+
+#         self.A = nn.Linear(in_features, r, bias=False)
+#         self.B = nn.Linear(r, out_features, bias=False)
+
+#         self.alpha = alpha
+#         self.r = r
+
+#     def forward(self, x):
+#         return self.W(x) + self.B(self.A(x)) * (self.alpha / self.r)
 
 def loss_function(X, X_n, mu, log_var):
     recon_loss = f.mse_loss(X_n, X, reduction="sum")
@@ -132,8 +147,8 @@ tensor_labels = torch.tensor(labels, dtype=torch.long)
 dataset = data.TensorDataset(tensor_data, tensor_labels)
 dataloader = data.DataLoader(dataset, batch_size=128, shuffle=True)
 
-# model = VAE().to(device)
-model = VAE_supervised().to(device)
+model = VAE().to(device)
+# model = VAE_supervised().to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 loss_history = []
@@ -141,7 +156,7 @@ recon_history = []
 kld_history = []
 cls_history = []
 
-epochs = 20
+epochs = 100
 for epoch in range(epochs):
     model.train()
     total_loss, total_recon, total_kld, total_cls = 0, 0, 0, 0
@@ -151,14 +166,14 @@ for epoch in range(epochs):
 
         optimizer.zero_grad()
 
-        logits, x_hat, mu, log_var = model(batch_x)
-        loss, recon_loss, kld, cls_loss = vae_classifier_loss(
-            batch_x, x_hat, mu, log_var, logits, batch_y
-        )
-        total_cls += cls_loss.item()
+        # logits, x_hat, mu, log_var = model(batch_x)
+        # loss, recon_loss, kld, cls_loss = vae_classifier_loss(
+        #     batch_x, x_hat, mu, log_var, logits, batch_y
+        # )
+        # total_cls += cls_loss.item()
 
-        # x_hat, mu, log_var = model(batch_x)
-        # loss, recon_loss, kld = loss_function(batch_x, x_hat, mu, log_var)
+        x_hat, mu, log_var = model(batch_x)
+        loss, recon_loss, kld = loss_function(batch_x, x_hat, mu, log_var)
 
         loss.backward()
         optimizer.step()
@@ -170,23 +185,23 @@ for epoch in range(epochs):
     loss_history.append(total_loss)
     recon_history.append(total_recon)
     kld_history.append(total_kld)
-    cls_history.append(total_cls)
+    # cls_history.append(total_cls)
 
-    print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f} | Cls: {total_cls:.2f}")
-    # print(f"Epoch {epoch + 1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f}")
+    # print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f} | Cls: {total_cls:.2f}")
+    print(f"Epoch {epoch + 1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f}")
 
 plt.figure(figsize=(8, 5))
 plt.plot(loss_history, label="Total Loss")
 plt.plot(recon_history, label="Reconstruction Loss")
 plt.plot(kld_history, label="KLD Loss")
 # CLS
-plt.plot(cls_history, label="Classifier Loss")
+# plt.plot(cls_history, label="Classifier Loss")
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.legend()
 plt.title("Training Loss over Epochs")
-plt.savefig("Loss_map")
+plt.savefig("temp/Loss_map.png")
 
 os.makedirs("models", exist_ok=True)
-torch.save(model.state_dict(), "models/vae_banking77_supervised.pth")
-print(f"Model saved to models/vae_banking77_supervised")
+torch.save(model.state_dict(), "models/vae_banking77.pth")
+print(f"Model saved to models/vae_banking77")

@@ -54,20 +54,6 @@ class VAE(nn.Module):
         Z = self.reparameterize(mu, log_var)
         return self.decoder(Z), mu, log_var
 
-# class VAE_supervised(VAE):
-#     def __init__(self, latent_dim=77, input_dim=384, hidden_dim=192):
-#         super().__init__(latent_dim, input_dim, hidden_dim)
-
-#         # Decoder isn't used.
-#         self.classifier = nn.Linear(latent_dim, 77)
-
-#     def forward(self, X):
-#         mu, log_var = self.encode(X)
-#         Z = self.reparameterize(mu, log_var)
-#         recon = self.decoder(Z)
-#         logits = self.classifier(mu)
-#         return logits, recon, mu, log_var
-
 conn = psycopg2.connect(
     host=HOST,
     dbname=DBNAME,
@@ -87,49 +73,68 @@ WHERE dataset_id = (
 """,
     (dataset_name,),
 )
-rows = curr.fetchall()
+tests = curr.fetchall()
+
+split = "_train"
+dataset_name = "Banking77Classification" + split
+
+curr.execute(
+    """
+SELECT * FROM vectors
+WHERE dataset_id = (
+    SELECT id FROM vector_datasets
+    WHERE name = %s
+);
+""",
+    (dataset_name,),
+)
+trains = curr.fetchall()
 curr.close()
 conn.close()
 
-embedding = np.array([row[2] for row in rows])  # (3080, 384)
-labels = np.array([row[5] for row in rows])  # (3080, ) min 155, max 231
-labels -= 78 # offset
+def build_text_to_embedding(rows):
+    text_to_emb = {}
+    for row in rows:
+        sentence_text = row[3]["text"]  # assuming JSONB or dict
+        emb = row[2]                    # vector
+        text_to_emb[sentence_text] = emb
+    return text_to_emb
 
-# mask = (labels == 0) | (labels == 1)
-# embedding = embedding[mask]
-# labels = labels[mask]
+text_to_embedding_test = build_text_to_embedding(tests)
+text_to_embedding_train = build_text_to_embedding(trains)
+text_to_embedding = {**text_to_embedding_test, **text_to_embedding_train}
 
-tensor_embedding = torch.tensor(embedding, dtype=torch.float32)
-tensor_labels = torch.tensor(labels, dtype=torch.long)
-dataset = data.TensorDataset(tensor_embedding, tensor_labels)
-dataloader = data.DataLoader(dataset, batch_size=128, shuffle=True)
-
-# LOAD
 model = VAE().to(device)
 model.load_state_dict(torch.load(state, weights_only=True))
 model.eval()
 
-def plot_latent_projection(model: VAE, save_pth: str):
-    with torch.no_grad():
-        mu, log_var = model.encode(tensor_embedding.to(device))
-        latent = mu.cpu().numpy()
-    
-    latent_2d = PCA(n_components=2).fit_transform(latent)
-    plt.figure(figsize=(8, 6))
-    scatter = plt.scatter(latent_2d[:, 0], latent_2d[:, 1], c=labels, cmap="tab20", s=10, alpha=0.7)
-    plt.colorbar(scatter, label="Label ID")
-    plt.title(f"Latent space visualization")
-    plt.savefig(save_pth, dpi=300)
+# with torch.no_grad():
+#     x_hat, mu, log_var = model(tensor_embedding.to(device))
+# x_hat = x_hat.cpu().numpy()
 
-# def plot_idk(model:VAE, save_pth:str="temp/latent_idk.png"):
-#     with torch.no_grad():
-#         x_hat, mu, log_var = model(tensor_embedding.to(device))
-        
-#     x_hat = x_hat.cpu().numpy()
+class VAE_eval():
+    def __init__(self, sentence_to_embedding: dict, vae_model: VAE, device=device):
+        self.sentence_to_embedding = sentence_to_embedding
+        self.vae = vae_model.to(device)
+        self.vae.eval()
+        self.device = device
 
-#     # plt.figure(figsize=(8, 6))
-#     # plt.savefig(save_pth, dpi=300)
-#     # pass
+    def encode(self, sentences, batch_size=128, **kwargs):
+        return np.array([self.sentence_to_embedding[s] for s in sentences])
+        inputs = np.array([self.sentence_to_embedding[s] for s in sentences])
+        inputs = torch.tensor(inputs, dtype=torch.float32).to(self.device)
 
-plot_latent_projection(model, "temp/latent_proj.png")
-# plot_idk(model)
+        # outputs = []
+        # with torch.no_grad():
+        #     for i in range(0, len(inputs), batch_size):
+        #         batch = inputs[i:i+batch_size]
+        #         mu, log_var = self.vae.encode(batch)
+        #         z = self.vae.reparameterize(mu, log_var)
+        #         outputs.append(z.cpu())
+        # return torch.cat(outputs, dim=0).numpy()
+
+
+model_eval = VAE_eval(text_to_embedding, model)
+task = mteb.get_tasks(tasks=["Banking77Classification"])
+evaluator = mteb.MTEB(task)
+evaluator.run(model_eval, output_folder="temp/")

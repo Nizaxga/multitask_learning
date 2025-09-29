@@ -215,3 +215,4 @@ Hopfield_Net
 testing_model
 config.py
 temp/
+models/
