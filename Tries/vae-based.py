@@ -54,7 +54,7 @@ conn.close()
 
 embedding = np.array([row[2] for row in rows])  # (10003, 384)
 labels = np.array([row[5] for row in rows])  # (10003, ) min 155, max 231
-labels -= 155  # offset
+labels -= 155  # offset min 0, max 77
 
 tensor_embedding = torch.tensor(embedding, dtype=torch.float32)
 tensor_labels = torch.tensor(labels, dtype=torch.long)
@@ -102,7 +102,6 @@ class VAE(nn.Module):
 #     def __init__(self, latent_dim=77, input_dim=384, hidden_dim=192):
 #         super().__init__(latent_dim, input_dim, hidden_dim)
 
-#         # Decoder isn't used.
 #         self.classifier = nn.Linear(latent_dim, 77)
 
 #     def forward(self, X):
@@ -131,7 +130,7 @@ def loss_function(X, X_n, mu, log_var):
     recon_loss = f.mse_loss(X_n, X, reduction="sum")
     # l1_loss = f.l1_loss(X_n, X, reduction="sum")
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    return recon_loss + KLD, recon_loss, KLD
+    return recon_loss + (5 * KLD), recon_loss, KLD
 
 
 def vae_classifier_loss(x, x_hat, mu, log_var, logits, labels):
@@ -140,6 +139,25 @@ def vae_classifier_loss(x, x_hat, mu, log_var, logits, labels):
     cls_loss = f.cross_entropy(logits, labels)
     total = vae_total + cls_loss
     return total, recon_loss, kld, cls_loss
+
+# Use Prototypical Networks or Contrastive Learning (as alternatives)
+# Alternatives like contrastive loss, InfoNCE, or ProtoNets might work better for adaptability. Let me know if you're interested in those.
+# Used triplet_loss for task clustering.
+
+# Reference
+def triplet_loss(anchor, positive, negative, margin=1.0):
+    pos_dist = f.pairwise_distance(anchor, positive, p=2)
+    neg_dist = f.pairwise_distance(anchor, negative, p=2)
+    loss = f.relu(pos_dist - neg_dist + margin)
+    return loss.mean()
+
+# Reference
+def vae_triplet_loss(x, x_hat, mu, log_var, anchor, positive, negative, margin=1.0):
+    vae_total, recon_loss, kld = loss_function(x, x_hat, mu, log_var)
+    trip_loss = triplet_loss(anchor, positive, negative, margin)
+    total_loss = vae_total + trip_loss
+    return total_loss, recon_loss, kld, trip_loss
+
 
 # Dataset -> TensorDataset -> DataLoader
 tensor_data = torch.tensor(embedding, dtype=torch.float32)
@@ -155,17 +173,19 @@ loss_history = []
 recon_history = []
 kld_history = []
 cls_history = []
+tri_history = []
 
 epochs = 100
 for epoch in range(epochs):
     model.train()
-    total_loss, total_recon, total_kld, total_cls = 0, 0, 0, 0
+    total_loss, total_recon, total_kld, total_cls, total_tri = 0, 0, 0, 0, 0
 
     for batch_x, batch_y in dataloader:
         batch_x, batch_y = batch_x.to(device), batch_y.to(device)
 
         optimizer.zero_grad()
 
+        # with MSEloss
         # logits, x_hat, mu, log_var = model(batch_x)
         # loss, recon_loss, kld, cls_loss = vae_classifier_loss(
         #     batch_x, x_hat, mu, log_var, logits, batch_y
@@ -186,22 +206,34 @@ for epoch in range(epochs):
     recon_history.append(total_recon)
     kld_history.append(total_kld)
     # cls_history.append(total_cls)
+    # tri_history.append(total_tri)
 
-    # print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f} | Cls: {total_cls:.2f}")
     print(f"Epoch {epoch + 1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f}")
+    # print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f} | Cls: {total_cls:.2f}")
+    # print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss:.2f} | Recon: {total_recon:.2f} | KLD: {total_kld:.2f} | Tri: {total_tri:.2f}")
 
-plt.figure(figsize=(8, 5))
-plt.plot(loss_history, label="Total Loss")
-plt.plot(recon_history, label="Reconstruction Loss")
-plt.plot(kld_history, label="KLD Loss")
-# CLS
-# plt.plot(cls_history, label="Classifier Loss")
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.legend()
-plt.title("Training Loss over Epochs")
-plt.savefig("temp/Loss_map.png")
+def plot_losses():
+    plt.figure(figsize=(8, 5))
+    plt.plot(loss_history, label="Total Loss")
+
+    # ELBO
+    plt.plot(recon_history, label="Recon Loss")
+    plt.plot(kld_history, label="KLD Loss")
+
+    # Third Loss
+    # plt.plot(cls_history, label="Classifier Loss")
+    # plt.plot(tri_history, label="Triplet Loss")
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.title("Training Loss over Epochs")
+    plt.savefig("output/loss_map.png")
+
+plot_losses()
 
 os.makedirs("models", exist_ok=True)
 torch.save(model.state_dict(), "models/vae_banking77.pth")
 print(f"Model saved to models/vae_banking77")
+# torch.save(model.state_dict(), "models/vae_banking77_supervised.pth")
+# print(f"Model saved to models/vae_banking77_supervised")

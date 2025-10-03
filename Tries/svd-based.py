@@ -47,8 +47,11 @@ def low_rank_approximation(k):
 #  SELECT count(*) FROM labels; == 77
 
 embedding = np.array([row[2] for row in rows])  # (10003, 384)
+embedding_k = low_rank_approximation(k=5)
+# print(f"{embedding_k.shape=}")
+
 labels = np.array([row[5] for row in rows]) # (10003, ) min 155, max 231
-labels -= 155
+labels -= 155 # offset
 
 # X_svd = U[:, :2] @ np.diag(S[:2])   # project to first 2 singular vectors
 # plt.figure(figsize=(10, 8))
