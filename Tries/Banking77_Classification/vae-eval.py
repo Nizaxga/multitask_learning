@@ -47,24 +47,18 @@ class VAE(nn.Module):
 
     def forward(self, X):
         mu, log_var = self.encode(X)
-        Z = self.reparameterize(mu, log_var)
+        Z = self.reparameterize(mu / mu.norm(p=2, dim=1, keepdim=True), log_var)
+
+        # Normalization might work might break who know.
+        # Turn out, It make worse. 0.11
+        # Z = Z / Z.norm(p=2, dim=1, keepdim=True)
+
         return self.decoder(Z), mu, log_var
 
-
-# class VAE_supervised(VAE):
-#     def __init__(self, latent_dim=77, input_dim=384, hidden_dim=192):
-#         super().__init__(latent_dim, input_dim, hidden_dim)
-
-#         # Decoder isn't used.
-#         self.classifier = nn.Linear(latent_dim, 77)
-
-#     def forward(self, X):
-#         mu, log_var = self.encode(X)
-#         Z = self.reparameterize(mu, log_var)
-#         recon = self.decoder(Z)
-#         logits = self.classifier(mu)
-#         return logits, recon, mu, log_var
-
+    # def forward(self, X):
+    #     mu, log_var = self.encode(X)
+    #     Z = self.reparameterize(mu, log_var)
+    #     return self.decoder(Z), mu, log_var
 
 conn = psycopg2.connect(
     host=HOST,
@@ -109,8 +103,8 @@ conn.close()
 def build_text_to_embedding(rows):
     text_to_emb = {}
     for row in rows:
-        sentence_text = row[3]["text"]  # assuming JSONB or dict
-        emb = row[2]  # vector
+        sentence_text = row[3]["text"]
+        emb = row[2]
         text_to_emb[sentence_text] = emb
     return text_to_emb
 
@@ -120,65 +114,43 @@ text_to_embedding_train = build_text_to_embedding(trains)
 text_to_embedding = {**text_to_embedding_test, **text_to_embedding_train}
 
 model = VAE().to(device)
-# model = VAE_supervised().to(device)
 model.load_state_dict(torch.load(state, weights_only=True))
-# model.eval()
+model.eval()
 
-# class VAE_eval:
-#     def __init__(self, sentence_to_embedding: dict, vae_model: VAE, device=device):
-#         self.sentence_to_embedding = sentence_to_embedding
-#         self.vae = vae_model
-#         self.device = device
-
-#     def encode(self, sentences, batch_size=128, **kwargs):
-#         inputs = np.array([self.sentence_to_embedding[s] for s in sentences])
-#         inputs = torch.tensor(inputs, dtype=torch.float32).to(self.device)
-
-#         outputs = []
-#         with torch.no_grad():
-#             for i in range(0, len(inputs), batch_size):
-#                 batch = inputs[i : i + batch_size]
-#                 # mu, log_var = self.vae.encode(batch)
-#                 # z = self.vae.reparameterize(mu, log_var)
-#                 # outputs.append(z.cpu())
-#                 mu, log_var = self.vae.encode(batch)
-#                 logits = self.vae.classifier(mu)
-#                 outputs.append(logits.cpu())
-#         return torch.cat(outputs, dim=0).numpy()
-
-class allLM():
-    def __init__(self, sentence_to_embedding: dict, vae_model: VAE, device=device):
+class All_MiniLM():
+    def __init__(self, sentence_to_embedding: dict):
         self.sentence_to_embedding = sentence_to_embedding
-        self.vae = vae_model.to(device)
-        self.vae.eval()
-        self.device = device
 
     def encode(self, sentences, batch_size=128, **kwargs):
         return np.array([self.sentence_to_embedding[s] for s in sentences])
 
-class VAE_eval:
-    def __init__(self, base_embedding_dict, vae_model, device):
-        self.base_embedding_dict = base_embedding_dict 
-        self.vae = vae_model.to(device)
-        self.device = device
+class VAE_eval():
+    def __init__(self, sentence_to_embedding: dict):
+        self.sentence_to_embedding = sentence_to_embedding
+        self.model = model
+        self.model.eval()
 
     def encode(self, sentences, batch_size=128, **kwargs):
-        inputs = np.array([self.base_embedding_dict[s] for s in sentences])
-        inputs = torch.tensor(inputs, dtype=torch.float32).to(self.device)
+        embedding = np.array([self.sentence_to_embedding[s] for s in sentences])
+        tensor_embedding = torch.tensor(embedding, dtype=torch.float32)
 
-        outputs = []
         with torch.no_grad():
-            for i in range(0, len(inputs), batch_size):
-                batch = inputs[i : i + batch_size]
-                mu, log_var = self.vae.encode(batch)
-                z = self.vae.reparameterize(mu, log_var)
-                outputs.append(z.cpu())
+            mu, log_var = self.model.encode(tensor_embedding.to(device))
+            # mu = mu / mu.norm(p=2, dim=1, keepdim=True)
+            latent = mu.cpu().numpy()
 
-        res = torch.cat(outputs, dim=0)
-        return res.numpy()
+        # Normalization before send out to evaluation
+        # Seem to improve from random guessing 0.12 accuracy to 0.38 accuracy
+        # Maybe due to the high-dim ball ended up have small radiaus
+        # And classification evaluation can't tell the difference between each class.
+        latent /= np.linalg.norm(latent, axis=1, keepdims=True)
+
+        return latent
 
 
-model_eval = VAE_eval(text_to_embedding, model, device)
+
+model_eval = VAE_eval(text_to_embedding)
+# model_eval = All_MiniLM(text_to_embedding) # Same performance as All-MiniLM-L6-V2
 task = mteb.get_tasks(tasks=["Banking77Classification"])
 evaluator = mteb.MTEB(task)
 evaluator.run(model_eval, output_folder="output/")

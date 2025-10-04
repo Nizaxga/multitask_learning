@@ -47,7 +47,12 @@ class VAE(nn.Module):
 
     def forward(self, X):
         mu, log_var = self.encode(X)
-        Z = self.reparameterize(mu, log_var)
+        Z = self.reparameterize(mu / mu.norm(p=2, dim=1, keepdim=True), log_var)
+
+        # Normalization might work might break who know.
+        # Turn out, It make worse. 0.11
+        # Z = Z / Z.norm(p=2, dim=1, keepdim=True)
+
         return self.decoder(Z), mu, log_var
 
 
@@ -170,6 +175,35 @@ def random_proj_3d(model: VAE, split: str, save_pth: str):
     latent_3d = PCA(n_components=3).fit_transform(latent)
 
 
+# def low_rank_approximation(latent, k):
+#     U, S, Vt = np.linalg.svd(latent, full_matrices=False)
+#     embedding_k = U[:, :k] @ np.diag(S[:k]) @ Vt[:k, :]
+#     return embedding_k
+
+
+def plot_proj_default(split: str, save_pth: str):
+    latent = test_embedding
+    latent = latent / np.linalg.norm(latent, axis=1, keepdims=True)
+
+    labels = test_labels
+
+    if split == "train":
+        latent = train_embedding
+        labels = train_labels
+
+    # latent = low_rank_approximation(latent, 2)
+    latent_2d = PCA(n_components=2).fit_transform(latent)
+    _, ax = plt.subplots(figsize=(8, 6))
+    scatter = ax.scatter(
+        latent_2d[:, 0], latent_2d[:, 1], c=labels, cmap="tab20", s=10, alpha=0.7
+    )
+    plt.colorbar(scatter, label="Label ID")
+    plt.xlabel("latend_2d[:, 0]")
+    plt.ylabel("latend_2d[:, 1]")
+    plt.title("Latent space visualization")
+    plt.savefig(save_pth + ".png", dpi=300)
+
+
 def plot_latent_projection(model: VAE, split: str, save_pth: str):
     model.eval()
     tensor_embedding = test_tensor_embedding
@@ -180,58 +214,27 @@ def plot_latent_projection(model: VAE, split: str, save_pth: str):
         labels = train_labels
 
     with torch.no_grad():
-        mu, _ = model.encode(tensor_embedding.to(device))
-        latent = mu.cpu().numpy()
+        mu, log_var = model.encode(tensor_embedding.to(device))
+        Z = model.reparameterize(mu, log_var)
+        Z = Z / Z.norm(p=2, dim=1, keepdim=True)
+        latent = Z.cpu().numpy()
 
+    latent /= np.linalg.norm(latent, axis=1, keepdims=True)
     latent_2d = PCA(n_components=2).fit_transform(latent)
     _, ax = plt.subplots(figsize=(8, 6))
     scatter = ax.scatter(
         latent_2d[:, 0], latent_2d[:, 1], c=labels, cmap="tab20", s=10, alpha=0.7
     )
-    # ax.grid(True, linestyle='--', alpha=0.5)
-    # ax.spines['left'].set_position('zero')
-    # ax.spines['bottom'].set_position('zero')
     plt.colorbar(scatter, label="Label ID")
     plt.xlabel("latend_2d[:, 0]")
     plt.ylabel("latend_2d[:, 1]")
     plt.title("Latent space visualization")
     plt.savefig(save_pth + ".png", dpi=300)
 
+
 # 2d latent space
-# def plot_latent_projection(model: VAE, split: str, save_pth: str):
-#     model.eval()
-#     tensor_embedding = test_tensor_embedding
-#     labels = test_labels
-
-#     if split == "train":
-#         tensor_embedding = train_tensor_embedding
-#         labels = train_labels
-
-#     with torch.no_grad():
-#         mu, _ = model.encode(tensor_embedding.to(device))
-#         latent = mu.cpu().numpy()
-
-#     _, ax = plt.subplots(figsize=(8, 6))
-#     scatter = ax.scatter(
-#         latent[:, 0], latent[:, 1], c=labels, cmap="tab20", s=10, alpha=0.7
-#     )
-#     plt.colorbar(scatter, label="Label ID")
-#     plt.xlabel("latent[:, 0]")
-#     plt.ylabel("latent[:, 1]")
-#     plt.title("Latent space visualization")
-#     plt.savefig(save_pth + ".png", dpi=300)
-#     plt.close()
-
-# def plot_idk(model:VAE, save_pth:str="output/latent_idk.png"):
-#     with torch.no_grad():
-#         x_hat, mu, log_var = model(tensor_embedding.to(device))
-
-#     x_hat = x_hat.cpu().numpy()
-
-#     # plt.figure(figsize=(8, 6))
-#     # plt.savefig(save_pth, dpi=300)
-#     # pass
-
+# plot_proj_default("train", "output/latent_default_train")
+# plot_proj_default("test", "output/latent_default_test")
 plot_latent_projection(model, "train", "output/latent_proj_train")
 plot_latent_projection(model, "test", "output/latent_proj_test")
 # random_proj_3d(model, "train", "output/3d_proj_train")
