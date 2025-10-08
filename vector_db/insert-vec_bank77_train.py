@@ -16,7 +16,6 @@ print(f"[LOG] Load dataset {dataset_name}")
 task = mteb.get_task(task_name=dataset_name)
 task.load_data()
 
-# Prototype "test" contain 3,000 rows while "train" contain 10,000 rows
 dataset_name = "Banking77Classification_train"
 texts = [row["text"] for row in task.dataset["train"]]
 labels = [row["label"] for row in task.dataset["train"]]

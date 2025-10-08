@@ -47,7 +47,8 @@ class VAE(nn.Module):
 
     def forward(self, X):
         mu, log_var = self.encode(X)
-        Z = self.reparameterize(mu / mu.norm(p=2, dim=1, keepdim=True), log_var)
+        # Z = self.reparameterize(mu / mu.norm(p=2, dim=1, keepdim=True), log_var)
+        Z = self.reparameterize(mu, log_var)
 
         # Normalization might work might break who know.
         # Turn out, It make worse. 0.11

@@ -35,7 +35,8 @@ class VAE_model(nn.Module):
         mu, log_var = self.encode(X)
         # Normalize mu kinda work? 0.35 accuracy.
         # But not as much as just normalize at classification model.
-        Z = self.reparameterize(mu / mu.norm(p=2, dim=1, keepdim=True), log_var)
+        # Z = self.reparameterize(mu / mu.norm(p=2, dim=1, keepdim=True), log_var)
+        Z = self.reparameterize(mu, log_var)
 
         # Normalization might work might break who know.
         # Turn out, It make worse. 0.11

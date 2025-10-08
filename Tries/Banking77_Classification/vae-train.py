@@ -9,7 +9,7 @@ from config import HOST, DBNAME, USERNAME, PASSWORD
 import torch
 import torch.optim as optim
 import torch.utils.data as data
-from Tries.Banking77_Classification.model import VAE_model, loss_function
+from model import VAE_model, loss_function
 
 model_name = "all-MiniLM-L6-v2"
 split = "_train"
